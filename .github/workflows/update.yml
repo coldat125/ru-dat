@@ -1,0 +1,46 @@
+name: update
+
+on:
+  schedule:
+    - cron: "17 4 * * *"   # ежедневно, upstream пересобирается чаще раза в неделю
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # ponytail: список категорий живёт здесь — правится в один клик через веб-редактор GitHub
+  # tld-ru = суффиксы ru/su/рф/moscow, всё остальное — RU-сервисы на не-RU доменах
+  # (tbank-online.com, alfabank.st, avito.st), которых по TLD не поймать
+  SITE: >-
+    tld-ru category-ru ru-available-only-inside
+    category-bank-ru category-gov-ru category-ecommerce-ru
+    category-media-ru category-retail-ru
+    tbank-ru sber yandex vk mailru mailru-group autoru rutube mts-ru t2-ru
+  IP: ru private
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: trim
+        run: |
+          python3 trim_dat.py --selftest
+          base=https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download
+          curl -sfL -o full-site.dat $base/geosite.dat
+          curl -sfL -o full-ip.dat   $base/geoip.dat
+          python3 trim_dat.py full-site.dat geosite.dat $SITE
+          python3 trim_dat.py full-ip.dat   geoip.dat   $IP
+          rm full-site.dat full-ip.dat
+
+      - name: commit if changed
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add geosite.dat geoip.dat
+          if ! git diff --cached --quiet; then
+            git commit -m "dat: $(date -u +%F)"
+            git push
+          fi
